@@ -17,6 +17,16 @@ function generateRandomString() {
   return randomString;
 }
 
+function findUserByEmail(email) {
+  let foundUserEmail = null;
+  for (const userId in users) {
+    if (users[userId].email === email) {
+      foundUserEmail = users[userId];
+    }
+  }
+  return foundUserEmail;
+}
+
 const urlDatabase = {
   "b2xVn2": "http://www.lighthouselabs.ca",
   "9sm5xK": "http://www.google.com"
@@ -53,6 +63,11 @@ app.get("/urls/new", (req, res) => {
 app.get("/register", (req, res) => {
   const templateVars = { user: users[req.cookies["user_id"]] };
   res.render("urls_register", templateVars);
+});
+
+app.get("/login", (req, res) => {
+  const templateVars = { user: users[req.cookies["user_id"]] };
+  res.render("urls_login", templateVars);
 });
 
 app.get("/urls/:id", (req, res) => {
@@ -93,23 +108,54 @@ app.post("/urls/:id", (req, res) => {
 });
 
 app.post("/login", (req, res) => {
-  res.cookie("username", req.body.username)
-  res.redirect("/urls");
+  const email = req.body.email;
+  const password = req.body.password;
+
+  //checks if email/account already exists
+  if (!findUserByEmail(email)) {
+    return res.status(403).send("403 Forbidden: Email cannot be found.");
+  }
+
+  //checks if correct password is used
+  if (findUserByEmail(email)) {
+    let userObject = findUserByEmail(email)
+    if (userObject["password"] !== password) {
+      return res.status(403).send("403 Forbidden: Email and password do not match.");
+    }
+    res.cookie("user_id", userObject["id"])
+    res.redirect("/urls");
+  }
+
 });
 
 app.post("/logout", (req, res) => {
-  res.clearCookie("username")
-  res.redirect("/urls");
+  res.clearCookie("user_id")
+  res.redirect("/login");
 });
 
-app.post("/register", (req, res) => {   //adds new users to the global users object
+//adds new users to the global users object
+app.post("/register", (req, res) => {   
+
+  //checks if email address already has an account
+    if (findUserByEmail(req.body.email)) {
+      return res.status(400).send("400 Bad Request: Email address already in use.");
+    }
   const userID = generateRandomString();
   users[userID] = {id: userID, email: req.body.email, password: req.body.password };
+
+  //checks for blank email or password
+  if (!users[userID].email || !users[userID].password) {    
+    return res.status(400).send("400 Bad Request: Please provide an email and password.");
+  }
+
+
+  
   res.cookie("user_id", userID);
   res.redirect("/urls");
 })
 
-app.get("/u/:id", (req, res) => {   //redirects the user away from the TinyApp and to the longURL
+//redirects the user away from the TinyApp and to the longURL
+app.get("/u/:id", (req, res) => {   
   const longURL = urlDatabase[req.params.id];
   res.redirect(longURL);
 });
