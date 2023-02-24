@@ -1,5 +1,6 @@
 const cookieParser = require("cookie-parser");
 const express = require("express");
+const bcrypt = require("bcryptjs");
 const app = express();
 const PORT = 8080; // default port 8080
 
@@ -18,13 +19,13 @@ function generateRandomString() {
 }
 
 function findUserByEmail(email) {
-  let foundUserEmail = null;
   for (const userId in users) {
     if (users[userId].email === email) {
-      foundUserEmail = users[userId];
+      const user = users[userId];
+      return user;
     }
   }
-  return foundUserEmail;
+  return null;
 }
 
 // function urlsForUser(obj, userId) {
@@ -65,7 +66,7 @@ const users = {
   userRandomID: {
     id: "userRandomID",
     email: "user@example.com",
-    password: "purple-monkey-dinosaur"
+    password: "1234"
   },
   user2RandomID: {
     id: "user2RandomID",
@@ -115,6 +116,7 @@ app.get("/login", (req, res) => {
   res.render("urls_login", templateVars);
 });
 
+//displays individual URL page
 app.get("/urls/:id", (req, res) => {
   const userId = req.cookies["user_id"];
   if (!req.cookies["user_id"]) {
@@ -160,6 +162,7 @@ app.post("/urls", (req, res) => {
   res.redirect(`/urls/${id}`)
 });
 
+//deleting a short URL
 app.post("/urls/:id/delete", (req, res) => {
   if (!req.cookies["user_id"]) {
     return res.status(400).send("<html><body>Must be logged in to delete URLs.</body></html>")
@@ -177,9 +180,8 @@ app.post("/urls/:id/delete", (req, res) => {
   res.redirect("/urls");
 });
 
-//Takes the user to the short url page, or tells them they need to log in to to shorten URLs
+//Takes the user to the short url page where they can edit, or tells them they need to log in to to edit URLs
 app.post("/urls/:id", (req, res) => {
-  console.log("req.cookies:", req.cookies)
   if (!req.cookies["user_id"]) {
     return res.status(400).send("<html><body>Must be logged in to edit URLs.</body></html>")
   }
@@ -195,24 +197,30 @@ app.post("/urls/:id", (req, res) => {
   res.redirect("/urls");
 });
 
+
+//login endpoint
 app.post("/login", (req, res) => {
   const email = req.body.email;
   const password = req.body.password;
-
+  const user = findUserByEmail(email);
   //checks if email/account already exists
-  if (!findUserByEmail(email)) {
+  if (!user) {
     return res.status(403).send("403 Forbidden: Email cannot be found.");
   }
 
   //checks if correct password is used
-  if (findUserByEmail(email)) {
-    let userObject = findUserByEmail(email)
-    if (userObject["password"] !== password) {
+    if (!bcrypt.compareSync(password, user.password)) {
       return res.status(403).send("403 Forbidden: Email and password do not match.");
-    }
-    res.cookie("user_id", userObject["id"])
+    };
+    res.cookie("user_id", user["id"]);
     res.redirect("/urls");
-  }
+    //let userObject = findUserByEmail(email);
+    // if (userObject["password"] !== password) {
+    //   
+    // }
+    // res.cookie("user_id", userObject["id"]);
+    // res.redirect("/urls");
+
 
 });
 
@@ -223,15 +231,21 @@ app.post("/logout", (req, res) => {
   res.redirect("/login");
 });
 
-//adds new users to the global users object
+//registration endpoint - adds new users to the global users object
 app.post("/register", (req, res) => {   
 
   //checks if email address already has an account
     if (findUserByEmail(req.body.email)) {
       return res.status(400).send("400 Bad Request: Email address already in use.");
     }
+
+  
+  const password = req.body.password; // found in the req.body object
+  const hashedPassword = bcrypt.hashSync(password, 10);
+
   const userID = generateRandomString();
-  users[userID] = {id: userID, email: req.body.email, password: req.body.password };
+  users[userID] = {id: userID, email: req.body.email, password: hashedPassword };
+  console.log(users)
 
   //checks for blank email or password
   if (!users[userID].email || !users[userID].password) {    
@@ -256,3 +270,4 @@ app.get("/u/:id", (req, res) => {
 app.listen(PORT, () => {
   console.log(`Example app listening on port ${PORT}!`);
 });
+
