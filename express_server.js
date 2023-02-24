@@ -1,6 +1,7 @@
-const cookieParser = require("cookie-parser");
+const cookieSession = require("cookie-session");
 const express = require("express");
 const bcrypt = require("bcryptjs");
+const findUserByEmail = require('./helpers');
 const app = express();
 const PORT = 8080; // default port 8080
 
@@ -18,28 +19,7 @@ function generateRandomString() {
   return randomString;
 }
 
-function findUserByEmail(email) {
-  for (const userId in users) {
-    if (users[userId].email === email) {
-      const user = users[userId];
-      return user;
-    }
-  }
-  return null;
-}
 
-// function urlsForUser(obj, userId) {
-//   const output = {};
-//   console.log("obj: ", obj)
-//   //console.log("userId: ", userId)
-//   for (let shortId in obj) {
-//     if (obj[shortId].userId === userId) {
-//        output[shortId] = obj[shortId]
-//        console.log("output[shortId]: ", output[shortId])
-//     }
-//   }
-//   return output;
-// }
 
 const urlsForUser = function(urlDatabase, userId) {
   let returnedUrls = {};
@@ -77,40 +57,47 @@ const users = {
 
 app.use(express.urlencoded({ extended: true }));
 
-app.use(cookieParser())
+app.use(cookieSession({
+  name: 'session',
+  keys: ['bootcamp'],
+  maxAge: 24 * 60 * 60 * 1000
+}))
 
 //displays the homepage
 app.get("/urls", (req, res) => {
-  const userId = req.cookies["user_id"]
-  const templateVars = { urls: urlsForUser(urlDatabase, userId), user: users[userId] };
-  if (!req.cookies["user_id"]) {
+  const userId = req.session.user_id;
+  if (!userId) {
     return res.status(400).send("<html><body>Must be logged in to shorten URLs.</body></html>")
   }
+  const templateVars = { urls: urlsForUser(urlDatabase, userId), user: users[userId] };
   res.render("urls_index", templateVars);
 });
 
 //displays the Shorten URL page, redirects users who are not logged in to the login page
 app.get("/urls/new", (req, res) => {
-  const templateVars = { user: users[req.cookies["user_id"]]  };
-  if (!req.cookies["user_id"]) {
-    res.redirect("/login");
+  const templateVars = { user: users[req.session.user_id]  };
+  if (!req.session.user_id) {
+    return res.redirect("/login");
   }
   res.render("urls_new", templateVars);
 });
 
 //displays Registration page, redirects users who are already logged in
 app.get("/register", (req, res) => {
-  const templateVars = { user: users[req.cookies["user_id"]] };
-  if (req.cookies["user_id"]) {
+  const templateVars = { user: null };
+  const userId = req.session.user_id;
+  if (userId) {
     res.redirect("/urls");
+  } else {
+    res.render("urls_register", templateVars);
   }
-  res.render("urls_register", templateVars);
 });
 
 //displays Login page, redirects users who are already logged in
 app.get("/login", (req, res) => {
-  const templateVars = { user: users[req.cookies["user_id"]] };
-  if (req.cookies["user_id"]) {
+  const userId = req.session.user_id;
+  const templateVars = { user: null };
+  if (userId) {
     return res.redirect("/urls");
   }
   res.render("urls_login", templateVars);
@@ -118,8 +105,8 @@ app.get("/login", (req, res) => {
 
 //displays individual URL page
 app.get("/urls/:id", (req, res) => {
-  const userId = req.cookies["user_id"];
-  if (!req.cookies["user_id"]) {
+  const userId = req.session.user_id;
+  if (!userId) {
     return res.status(400).send("<html><body>Must be logged in to shorten URLs.</body></html>")
   }
   const urlObject = urlDatabase[req.params.id];
@@ -135,7 +122,9 @@ app.get("/urls/:id", (req, res) => {
 
 
 app.get("/", (req, res) => {
-  res.send("Hello!");
+  if (!req.session.user_id) {
+    return res.redirect("/login")
+  } res.redirect("/urls")
 });
 
 app.get("/urls.json", (req, res) => {
@@ -149,14 +138,14 @@ app.get("/hello", (req, res) => {
 //creating a short URL
 app.post("/urls", (req, res) => {
 
-  if (!req.cookies["user_id"]) {
+  if (!req.session.user_id) {
     return res.status(400).send("<html><body>Must be logged in to shorten URLs.</body></html>")
   }
   console.log("req.body: ", req.body); // Log the POST request body to the console
   const id = generateRandomString();
   urlDatabase[id] = {
     longURL: req.body.longURL,
-    userId: req.cookies["user_id"]
+    userId: req.session.user_id
   }
   console.log("urlsDatabaseLogin: ", urlDatabase)
   res.redirect(`/urls/${id}`)
@@ -164,7 +153,8 @@ app.post("/urls", (req, res) => {
 
 //deleting a short URL
 app.post("/urls/:id/delete", (req, res) => {
-  if (!req.cookies["user_id"]) {
+  const userId = req.session.user_id;
+  if (!req.session.user_id) {
     return res.status(400).send("<html><body>Must be logged in to delete URLs.</body></html>")
   }
   const urlObject = urlDatabase[req.params.id];
@@ -182,7 +172,7 @@ app.post("/urls/:id/delete", (req, res) => {
 
 //Takes the user to the short url page where they can edit, or tells them they need to log in to to edit URLs
 app.post("/urls/:id", (req, res) => {
-  if (!req.cookies["user_id"]) {
+  if (!req.session.user_id) {
     return res.status(400).send("<html><body>Must be logged in to edit URLs.</body></html>")
   }
   const urlObject = urlDatabase[req.params.id];
@@ -202,7 +192,7 @@ app.post("/urls/:id", (req, res) => {
 app.post("/login", (req, res) => {
   const email = req.body.email;
   const password = req.body.password;
-  const user = findUserByEmail(email);
+  const user = findUserByEmail(email, users);
   //checks if email/account already exists
   if (!user) {
     return res.status(403).send("403 Forbidden: Email cannot be found.");
@@ -212,22 +202,15 @@ app.post("/login", (req, res) => {
     if (!bcrypt.compareSync(password, user.password)) {
       return res.status(403).send("403 Forbidden: Email and password do not match.");
     };
-    res.cookie("user_id", user["id"]);
+    req.session.user_id = user.id;
     res.redirect("/urls");
-    //let userObject = findUserByEmail(email);
-    // if (userObject["password"] !== password) {
-    //   
-    // }
-    // res.cookie("user_id", userObject["id"]);
-    // res.redirect("/urls");
-
 
 });
 
 //clears the login cookie and redirects the user to the login page upon logout
 app.post("/logout", (req, res) => {
   console.log("urlsDatabaseLogout: ", urlDatabase)
-  res.clearCookie("user_id")
+  req.session = null;
   res.redirect("/login");
 });
 
@@ -235,7 +218,7 @@ app.post("/logout", (req, res) => {
 app.post("/register", (req, res) => {   
 
   //checks if email address already has an account
-    if (findUserByEmail(req.body.email)) {
+    if (findUserByEmail(req.body.email, users)) {
       return res.status(400).send("400 Bad Request: Email address already in use.");
     }
 
@@ -251,8 +234,7 @@ app.post("/register", (req, res) => {
   if (!users[userID].email || !users[userID].password) {    
     return res.status(400).send("400 Bad Request: Please provide an email and password.");
   }
-  
-  res.cookie("user_id", userID);
+  req.session.user_id = userID;
   res.redirect("/urls");
 })
 
@@ -270,4 +252,5 @@ app.get("/u/:id", (req, res) => {
 app.listen(PORT, () => {
   console.log(`Example app listening on port ${PORT}!`);
 });
+
 
