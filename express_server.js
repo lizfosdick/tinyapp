@@ -141,13 +141,13 @@ app.post("/urls", (req, res) => {
   if (!req.session.user_id) {
     return res.status(400).send("<html><body>Must be logged in to shorten URLs.</body></html>")
   }
-  console.log("req.body: ", req.body); // Log the POST request body to the console
+  //console.log("req.body: ", req.body); // Log the POST request body to the console
   const id = generateRandomString();
   urlDatabase[id] = {
     longURL: req.body.longURL,
     userId: req.session.user_id
   }
-  console.log("urlsDatabaseLogin: ", urlDatabase)
+  //console.log("urlsDatabaseLogin: ", urlDatabase)
   res.redirect(`/urls/${id}`)
 });
 
@@ -172,6 +172,7 @@ app.post("/urls/:id/delete", (req, res) => {
 
 //Takes the user to the short url page where they can edit, or tells them they need to log in to to edit URLs
 app.post("/urls/:id", (req, res) => {
+  const userId = req.session.user_id;
   if (!req.session.user_id) {
     return res.status(400).send("<html><body>Must be logged in to edit URLs.</body></html>")
   }
@@ -209,7 +210,7 @@ app.post("/login", (req, res) => {
 
 //clears the login cookie and redirects the user to the login page upon logout
 app.post("/logout", (req, res) => {
-  console.log("urlsDatabaseLogout: ", urlDatabase)
+  //console.log("urlsDatabaseLogout: ", urlDatabase)
   req.session = null;
   res.redirect("/login");
 });
@@ -222,18 +223,21 @@ app.post("/register", (req, res) => {
       return res.status(400).send("400 Bad Request: Email address already in use.");
     }
 
-  
+if (!req.body.email || !req.body.password) {
+  return res.status(400).send("400 Bad Request: Please provide an email and password.");
+}
+
   const password = req.body.password; // found in the req.body object
   const hashedPassword = bcrypt.hashSync(password, 10);
-
   const userID = generateRandomString();
   users[userID] = {id: userID, email: req.body.email, password: hashedPassword };
-  console.log(users)
 
-  //checks for blank email or password
-  if (!users[userID].email || !users[userID].password) {    
-    return res.status(400).send("400 Bad Request: Please provide an email and password.");
-  }
+     //checks for blank email or password
+    //  if ((!users[userID].email) || (!users[userID].password)) {    
+    //   return res.status(400).send("400 Bad Request: Please provide an email and password.");
+    // }
+
+ 
   req.session.user_id = userID;
   res.redirect("/urls");
 })
@@ -244,7 +248,7 @@ app.post("/register", (req, res) => {
 app.get("/u/:id", (req, res) => {
   const longURL = urlDatabase[req.params.id].longURL;
   if (!longURL) {
-    return res.status(400).send("<html><body>404 Error: URL not found.</body></html>")
+    return res.status(400).send("404 Error: URL not found.")
   }
   res.redirect(longURL)
 })
