@@ -27,9 +27,38 @@ function findUserByEmail(email) {
   return foundUserEmail;
 }
 
+// function urlsForUser(obj, userId) {
+//   const output = {};
+//   console.log("obj: ", obj)
+//   //console.log("userId: ", userId)
+//   for (let shortId in obj) {
+//     if (obj[shortId].userId === userId) {
+//        output[shortId] = obj[shortId]
+//        console.log("output[shortId]: ", output[shortId])
+//     }
+//   }
+//   return output;
+// }
+
+const urlsForUser = function(urlDatabase, userId) {
+  let returnedUrls = {};
+  for (let url in urlDatabase) {
+    if (urlDatabase[url].userId === userId) {
+      returnedUrls[url] = urlDatabase[url];
+    }
+  }
+  return returnedUrls;
+}
+
 const urlDatabase = {
-  "b2xVn2": "http://www.lighthouselabs.ca",
-  "9sm5xK": "http://www.google.com"
+  b6UTxQ: {
+    longURL: "https://www.tsn.ca",
+    userId: "aJ48lW",
+  },
+  i3BoGr: {
+    longURL: "https://www.google.ca",
+    userId: "aJ48lW",
+  },
 };
 
 const users = {
@@ -49,9 +78,13 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use(cookieParser())
 
-
+//displays the homepage
 app.get("/urls", (req, res) => {
-  const templateVars = { urls: urlDatabase, user: users[req.cookies["user_id"]] };
+  const userId = req.cookies["user_id"]
+  const templateVars = { urls: urlsForUser(urlDatabase, userId), user: users[userId] };
+  if (!req.cookies["user_id"]) {
+    return res.status(400).send("<html><body>Must be logged in to shorten URLs.</body></html>")
+  }
   res.render("urls_index", templateVars);
 });
 
@@ -83,7 +116,18 @@ app.get("/login", (req, res) => {
 });
 
 app.get("/urls/:id", (req, res) => {
-  const templateVars = { id: req.params.id, longURL: urlDatabase[req.params.id], user: users[req.cookies["user_id"]] };
+  const userId = req.cookies["user_id"];
+  if (!req.cookies["user_id"]) {
+    return res.status(400).send("<html><body>Must be logged in to shorten URLs.</body></html>")
+  }
+  const urlObject = urlDatabase[req.params.id];
+  if (!urlObject) {
+    return res.status(400).send("<html><body>Bad Request: Short URL does not exist.</body></html>")
+  }
+  if (urlObject.userId !== userId) {
+    return res.status(400).send("<html><body>Bad Request: Cannot edit URLs you don't own.</body></html>")
+  }
+  const templateVars = { id: req.params.id, longURL: urlObject.longURL, user: users[userId] };
   res.render("urls_show", templateVars);
 });
 
@@ -100,28 +144,54 @@ app.get("/hello", (req, res) => {
   res.send("<html><body>Hello <b>World</b> </body></html>\n");
 });
 
+//creating a short URL
 app.post("/urls", (req, res) => {
+
   if (!req.cookies["user_id"]) {
     return res.status(400).send("<html><body>Must be logged in to shorten URLs.</body></html>")
   }
-  console.log(req.body); // Log the POST request body to the console
+  console.log("req.body: ", req.body); // Log the POST request body to the console
   const id = generateRandomString();
-  urlDatabase[id] = req.body.longURL;
+  urlDatabase[id] = {
+    longURL: req.body.longURL,
+    userId: req.cookies["user_id"]
+  }
+  console.log("urlsDatabaseLogin: ", urlDatabase)
   res.redirect(`/urls/${id}`)
 });
 
 app.post("/urls/:id/delete", (req, res) => {
+  if (!req.cookies["user_id"]) {
+    return res.status(400).send("<html><body>Must be logged in to delete URLs.</body></html>")
+  }
+  const urlObject = urlDatabase[req.params.id];
+  if (!urlObject) {
+    return res.status(400).send("<html><body>Bad Request: Short URL does not exist.</body></html>")
+  }
+  if (urlObject.userId !== userId) {
+    return res.status(400).send("<html><body>Bad Request: Cannot delete URLs you don't own.</body></html>")
+  }
+
   const id = req.params.id;
   delete urlDatabase[id];
   res.redirect("/urls");
 });
 
+//Takes the user to the short url page, or tells them they need to log in to to shorten URLs
 app.post("/urls/:id", (req, res) => {
+  console.log("req.cookies:", req.cookies)
   if (!req.cookies["user_id"]) {
-    return res.status(400).send("<html><body>Must be logged in to shorten URLs.</body></html>")
+    return res.status(400).send("<html><body>Must be logged in to edit URLs.</body></html>")
+  }
+  const urlObject = urlDatabase[req.params.id];
+  if (!urlObject) {
+    return res.status(400).send("<html><body>Bad Request: Short URL does not exist.</body></html>")
+  }
+  if (urlObject.userId !== userId) {
+    return res.status(400).send("<html><body>Bad Request: Cannot edit URLs you don't own.</body></html>")
   }
   const id = req.params.id;
-  urlDatabase[id] = req.body.longURL;
+  urlDatabase[id].longURL = req.body.longURL;
   res.redirect("/urls");
 });
 
@@ -148,6 +218,7 @@ app.post("/login", (req, res) => {
 
 //clears the login cookie and redirects the user to the login page upon logout
 app.post("/logout", (req, res) => {
+  console.log("urlsDatabaseLogout: ", urlDatabase)
   res.clearCookie("user_id")
   res.redirect("/login");
 });
@@ -171,15 +242,16 @@ app.post("/register", (req, res) => {
   res.redirect("/urls");
 })
 
+
+
 //redirects the user away from the TinyApp and to the longURL
-app.get("/u/:id", (req, res) => {   
-  const longURL = urlDatabase[req.params.id];
+app.get("/u/:id", (req, res) => {
+  const longURL = urlDatabase[req.params.id].longURL;
   if (!longURL) {
     return res.status(400).send("<html><body>404 Error: URL not found.</body></html>")
   }
-  res.redirect(longURL);
-});
-
+  res.redirect(longURL)
+})
 
 app.listen(PORT, () => {
   console.log(`Example app listening on port ${PORT}!`);
