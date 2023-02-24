@@ -5,22 +5,23 @@ const findUserByEmail = require('./helpers');
 const app = express();
 const PORT = 8080; // default port 8080
 
-app.set("view engine", "ejs");  // tells Express to use EJS as its template engine
+// tells Express to use EJS as its template engine
+app.set("view engine", "ejs");
 
-function generateRandomString() {
+//generates random string for short url and user id
+const generateRandomString = function() {
   let randomString = '';
-  const characters = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 
-  'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 
-  'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'];
+  const characters = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L',
+    'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l',
+    'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'];
   for (let i = 0; i < 6; i++) {
     let char = Math.floor(Math.random() * characters.length);
     randomString += characters[char];
   }
   return randomString;
-}
+};
 
-
-
+//returns urls owned by that user
 const urlsForUser = function(urlDatabase, userId) {
   let returnedUrls = {};
   for (let url in urlDatabase) {
@@ -29,7 +30,7 @@ const urlsForUser = function(urlDatabase, userId) {
     }
   }
   return returnedUrls;
-}
+};
 
 const urlDatabase = {
   b6UTxQ: {
@@ -53,7 +54,7 @@ const users = {
     email: "user2@example.com",
     password: "dishwasher-funk",
   }
-}
+};
 
 app.use(express.urlencoded({ extended: true }));
 
@@ -61,13 +62,13 @@ app.use(cookieSession({
   name: 'session',
   keys: ['bootcamp'],
   maxAge: 24 * 60 * 60 * 1000
-}))
+}));
 
 //displays the homepage
 app.get("/urls", (req, res) => {
   const userId = req.session.user_id;
   if (!userId) {
-    return res.status(400).send("<html><body>Must be logged in to shorten URLs.</body></html>")
+    return res.status(400).send("<html><body>Must be logged in to shorten URLs.</body></html>");
   }
   const templateVars = { urls: urlsForUser(urlDatabase, userId), user: users[userId] };
   res.render("urls_index", templateVars);
@@ -107,64 +108,57 @@ app.get("/login", (req, res) => {
 app.get("/urls/:id", (req, res) => {
   const userId = req.session.user_id;
   if (!userId) {
-    return res.status(400).send("<html><body>Must be logged in to shorten URLs.</body></html>")
+    return res.status(400).send("<html><body>Must be logged in to shorten URLs.</body></html>");
   }
   const urlObject = urlDatabase[req.params.id];
   if (!urlObject) {
-    return res.status(400).send("<html><body>Bad Request: Short URL does not exist.</body></html>")
+    return res.status(400).send("<html><body>Bad Request: Short URL does not exist.</body></html>");
   }
   if (urlObject.userId !== userId) {
-    return res.status(400).send("<html><body>Bad Request: Cannot edit URLs you don't own.</body></html>")
+    return res.status(400).send("<html><body>Bad Request: Cannot edit URLs you don't own.</body></html>");
   }
   const templateVars = { id: req.params.id, longURL: urlObject.longURL, user: users[userId] };
   res.render("urls_show", templateVars);
 });
 
-
+//redirects / to the login page (if not logged in) or the homepage (if logged in)
 app.get("/", (req, res) => {
   if (!req.session.user_id) {
-    return res.redirect("/login")
-  } res.redirect("/urls")
+    return res.redirect("/login");
+  }
+  res.redirect("/urls");
 });
 
 app.get("/urls.json", (req, res) => {
   res.json(urlDatabase);
-})
-
-app.get("/hello", (req, res) => {
-  res.send("<html><body>Hello <b>World</b> </body></html>\n");
 });
 
 //creating a short URL
 app.post("/urls", (req, res) => {
-
   if (!req.session.user_id) {
-    return res.status(400).send("<html><body>Must be logged in to shorten URLs.</body></html>")
+    return res.status(400).send("<html><body>Must be logged in to shorten URLs.</body></html>");
   }
-  //console.log("req.body: ", req.body); // Log the POST request body to the console
   const id = generateRandomString();
   urlDatabase[id] = {
     longURL: req.body.longURL,
     userId: req.session.user_id
-  }
-  //console.log("urlsDatabaseLogin: ", urlDatabase)
-  res.redirect(`/urls/${id}`)
+  };
+  res.redirect(`/urls/${id}`);
 });
 
 //deleting a short URL
 app.post("/urls/:id/delete", (req, res) => {
   const userId = req.session.user_id;
   if (!req.session.user_id) {
-    return res.status(400).send("<html><body>Must be logged in to delete URLs.</body></html>")
+    return res.status(400).send("<html><body>Must be logged in to delete URLs.</body></html>");
   }
   const urlObject = urlDatabase[req.params.id];
   if (!urlObject) {
-    return res.status(400).send("<html><body>Bad Request: Short URL does not exist.</body></html>")
+    return res.status(400).send("<html><body>Bad Request: Short URL does not exist.</body></html>");
   }
   if (urlObject.userId !== userId) {
-    return res.status(400).send("<html><body>Bad Request: Cannot delete URLs you don't own.</body></html>")
+    return res.status(400).send("<html><body>Bad Request: Cannot delete URLs you don't own.</body></html>");
   }
-
   const id = req.params.id;
   delete urlDatabase[id];
   res.redirect("/urls");
@@ -174,14 +168,14 @@ app.post("/urls/:id/delete", (req, res) => {
 app.post("/urls/:id", (req, res) => {
   const userId = req.session.user_id;
   if (!req.session.user_id) {
-    return res.status(400).send("<html><body>Must be logged in to edit URLs.</body></html>")
+    return res.status(400).send("<html><body>Must be logged in to edit URLs.</body></html>");
   }
   const urlObject = urlDatabase[req.params.id];
   if (!urlObject) {
-    return res.status(400).send("<html><body>Bad Request: Short URL does not exist.</body></html>")
+    return res.status(400).send("<html><body>Bad Request: Short URL does not exist.</body></html>");
   }
   if (urlObject.userId !== userId) {
-    return res.status(400).send("<html><body>Bad Request: Cannot edit URLs you don't own.</body></html>")
+    return res.status(400).send("<html><body>Bad Request: Cannot edit URLs you don't own.</body></html>");
   }
   const id = req.params.id;
   urlDatabase[id].longURL = req.body.longURL;
@@ -194,64 +188,54 @@ app.post("/login", (req, res) => {
   const email = req.body.email;
   const password = req.body.password;
   const user = findUserByEmail(email, users);
+
   //checks if email/account already exists
   if (!user) {
     return res.status(403).send("403 Forbidden: Email cannot be found.");
   }
 
   //checks if correct password is used
-    if (!bcrypt.compareSync(password, user.password)) {
-      return res.status(403).send("403 Forbidden: Email and password do not match.");
-    };
-    req.session.user_id = user.id;
-    res.redirect("/urls");
-
+  if (!bcrypt.compareSync(password, user.password)) {
+    return res.status(403).send("403 Forbidden: Email and password do not match.");
+  }
+  req.session.user_id = user.id;
+  res.redirect("/urls");
 });
 
 //clears the login cookie and redirects the user to the login page upon logout
 app.post("/logout", (req, res) => {
-  //console.log("urlsDatabaseLogout: ", urlDatabase)
   req.session = null;
   res.redirect("/login");
 });
 
 //registration endpoint - adds new users to the global users object
-app.post("/register", (req, res) => {   
+app.post("/register", (req, res) => {
 
   //checks if email address already has an account
-    if (findUserByEmail(req.body.email, users)) {
-      return res.status(400).send("400 Bad Request: Email address already in use.");
-    }
-
-if (!req.body.email || !req.body.password) {
-  return res.status(400).send("400 Bad Request: Please provide an email and password.");
-}
+  if (findUserByEmail(req.body.email, users)) {
+    return res.status(400).send("400 Bad Request: Email address already in use.");
+  }
+  //checks for blank email or password
+  if (!req.body.email || !req.body.password) {
+    return res.status(400).send("400 Bad Request: Please provide an email and password.");
+  }
 
   const password = req.body.password; // found in the req.body object
   const hashedPassword = bcrypt.hashSync(password, 10);
   const userID = generateRandomString();
   users[userID] = {id: userID, email: req.body.email, password: hashedPassword };
-
-     //checks for blank email or password
-    //  if ((!users[userID].email) || (!users[userID].password)) {    
-    //   return res.status(400).send("400 Bad Request: Please provide an email and password.");
-    // }
-
- 
   req.session.user_id = userID;
   res.redirect("/urls");
-})
-
-
+});
 
 //redirects the user away from the TinyApp and to the longURL
 app.get("/u/:id", (req, res) => {
   const longURL = urlDatabase[req.params.id].longURL;
   if (!longURL) {
-    return res.status(400).send("404 Error: URL not found.")
+    return res.status(400).send("404 Error: URL not found.");
   }
-  res.redirect(longURL)
-})
+  res.redirect(longURL);
+});
 
 app.listen(PORT, () => {
   console.log(`Example app listening on port ${PORT}!`);
